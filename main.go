@@ -144,12 +144,18 @@ func loadKeyPairs() (KeyPairs, error) {
 }
 
 func play(ctx context.Context, client *rpc.Client, wsClient *ws.Client, keyPairs KeyPairs, gameState *tic_tac_toe.Game) error {
+	var player solana.PrivateKey
 	log.Println("Turn:", gameState.Turn)
+	if gameState.Turn%2 == 0 {
+		player = keyPairs.PlayerTwoPrivateKey
+	} else {
+		player = keyPairs.PlayerOnePrivateKey
+	}
 	tile := tic_tac_toe.Tile{Row: 0, Column: 0}
 	tPlay := tic_tac_toe.NewPlayInstruction(
 		tile,
 		keyPairs.GamePrivateKey.PublicKey(),
-		keyPairs.PlayerOnePrivateKey.PublicKey(),
+		player.PublicKey(),
 	)
 	recent, err := client.GetRecentBlockhash(ctx, rpc.CommitmentFinalized)
 	if err != nil {
@@ -159,14 +165,14 @@ func play(ctx context.Context, client *rpc.Client, wsClient *ws.Client, keyPairs
 	tx, err := solana.NewTransaction(
 		[]solana.Instruction{tPlay.Build()},
 		recent.Value.Blockhash,
-		solana.TransactionPayer(keyPairs.PlayerOnePrivateKey.PublicKey()),
+		solana.TransactionPayer(player.PublicKey()),
 	)
 	if err != nil {
 		err = errors.New("Failed at calling SetupGame transaction: " + err.Error())
 		return err
 	}
 	log.Println("Play tx:", tx)
-	signers := []solana.PrivateKey{keyPairs.GamePrivateKey, keyPairs.PlayerOnePrivateKey}
+	signers := []solana.PrivateKey{keyPairs.GamePrivateKey, player}
 	_, err = tx.Sign(
 		func(key solana.PublicKey) *solana.PrivateKey {
 			for _, signer := range signers {

@@ -60,7 +60,7 @@ func main() {
 	tx, err := solana.NewTransaction(
 		[]solana.Instruction{tSetupGame.Build()},
 		recent.Value.Blockhash,
-		solana.TransactionPayer(keyPairs.GamePrivateKey.PublicKey()),
+		solana.TransactionPayer(keyPairs.PlayerOnePrivateKey.PublicKey()),
 	)
 	if err != nil {
 		log.Fatal("Failed at calling SetupGame transaction: ", err)
@@ -99,6 +99,11 @@ func main() {
 		return
 	}
 	log.Println("SetupGame Sig: ", sig)
+	err = play(ctx, client, wsClient, keyPairs)
+	if err != nil {
+		log.Fatal("Failed at calling play:", err)
+		return
+	}
 }
 
 func loadKeyPairs() (KeyPairs, error) {
@@ -125,4 +130,62 @@ func loadKeyPairs() (KeyPairs, error) {
 	}
 	return keyPairs, nil
 
+}
+
+func play(ctx context.Context, client *rpc.Client, wsClient *ws.Client, keyPairs KeyPairs) error {
+	tile := tic_tac_toe.Tile{Row: 0, Column: 0}
+	tPlay := tic_tac_toe.NewPlayInstruction(
+		tile,
+		keyPairs.GamePrivateKey.PublicKey(),
+		keyPairs.PlayerOnePrivateKey.PublicKey(),
+	)
+	recent, err := client.GetRecentBlockhash(ctx, rpc.CommitmentFinalized)
+	if err != nil {
+		err = errors.New("Failed at getting recent block Hash: " + err.Error())
+		return err
+	}
+	tx, err := solana.NewTransaction(
+		[]solana.Instruction{tPlay.Build()},
+		recent.Value.Blockhash,
+		solana.TransactionPayer(keyPairs.PlayerOnePrivateKey.PublicKey()),
+	)
+	if err != nil {
+		err = errors.New("Failed at calling SetupGame transaction: " + err.Error())
+		return err
+	}
+	log.Println("Play tx:", tx)
+	signers := []solana.PrivateKey{keyPairs.GamePrivateKey, keyPairs.PlayerOnePrivateKey}
+	_, err = tx.Sign(
+		func(key solana.PublicKey) *solana.PrivateKey {
+			for _, signer := range signers {
+				if signer.PublicKey().Equals(key) {
+					return &signer
+				}
+			}
+			return nil
+		})
+	if err != nil {
+		log.Fatal("unable to sign play transaction: ", err)
+		return nil
+	}
+
+	err = tx.VerifySignatures()
+	if err != nil {
+		log.Fatal("Error at Verifying tx play signatures: ", err)
+		return nil
+	}
+
+	// Send transaction, and wait for confirmation:
+	sig, err := confirm.SendAndConfirmTransaction(
+		ctx,
+		client,
+		wsClient,
+		tx,
+	)
+	if err != nil {
+		log.Fatal("Failed at sending and confirm SetupGame transaction: ", err)
+		return nil
+	}
+	log.Println("Play Sig: ", sig)
+	return nil
 }

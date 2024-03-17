@@ -40,6 +40,12 @@ func main() {
 		return
 	}
 
+	programID, err := solana.PublicKeyFromBase58(ProgramID)
+	if err != nil {
+		log.Fatal("Failed at getting programID: ", err)
+	}
+	tic_tac_toe.SetProgramID(programID)
+
 	gameState, err := getGameState(ctx, client, keyPairs.GamePrivateKey.PublicKey())
 	if err != nil {
 		log.Fatal("Failed at getting game state:", err)
@@ -47,67 +53,64 @@ func main() {
 	}
 	log.Println("GameState:", gameState)
 
-	programID, err := solana.PublicKeyFromBase58(ProgramID)
-	if err != nil {
-		log.Fatal("Failed at getting programID: ", err)
-	}
-	tic_tac_toe.SetProgramID(programID)
+	// Check if game is already started
+	if gameState.Turn == 0 {
+		tSetupGame := tic_tac_toe.NewSetupGameInstruction(
+			keyPairs.PlayerTwoPrivateKey.PublicKey(),
+			keyPairs.GamePrivateKey.PublicKey(),
+			keyPairs.PlayerOnePrivateKey.PublicKey(),
+			solana.SystemProgramID,
+		)
 
-	tSetupGame := tic_tac_toe.NewSetupGameInstruction(
-		keyPairs.PlayerTwoPrivateKey.PublicKey(),
-		keyPairs.GamePrivateKey.PublicKey(),
-		keyPairs.PlayerOnePrivateKey.PublicKey(),
-		solana.SystemProgramID,
-	)
-
-	recent, err := client.GetRecentBlockhash(ctx, rpc.CommitmentFinalized)
-	if err != nil {
-		log.Fatal("Failed at getting recent block Hash: ", err)
-		return
-	}
-	tx, err := solana.NewTransaction(
-		[]solana.Instruction{tSetupGame.Build()},
-		recent.Value.Blockhash,
-		solana.TransactionPayer(keyPairs.PlayerOnePrivateKey.PublicKey()),
-	)
-	if err != nil {
-		log.Fatal("Failed at calling SetupGame transaction: ", err)
-		return
-	}
-	log.Println("SetupGame tx:", tx)
-	signers := []solana.PrivateKey{keyPairs.GamePrivateKey, keyPairs.PlayerOnePrivateKey}
-	_, err = tx.Sign(
-		func(key solana.PublicKey) *solana.PrivateKey {
-			for _, signer := range signers {
-				if signer.PublicKey().Equals(key) {
-					return &signer
+		recent, err := client.GetRecentBlockhash(ctx, rpc.CommitmentFinalized)
+		if err != nil {
+			log.Fatal("Failed at getting recent block Hash: ", err)
+			return
+		}
+		tx, err := solana.NewTransaction(
+			[]solana.Instruction{tSetupGame.Build()},
+			recent.Value.Blockhash,
+			solana.TransactionPayer(keyPairs.PlayerOnePrivateKey.PublicKey()),
+		)
+		if err != nil {
+			log.Fatal("Failed at calling SetupGame transaction: ", err)
+			return
+		}
+		log.Println("SetupGame tx:", tx)
+		signers := []solana.PrivateKey{keyPairs.GamePrivateKey, keyPairs.PlayerOnePrivateKey}
+		_, err = tx.Sign(
+			func(key solana.PublicKey) *solana.PrivateKey {
+				for _, signer := range signers {
+					if signer.PublicKey().Equals(key) {
+						return &signer
+					}
 				}
-			}
-			return nil
-		})
-	if err != nil {
-		log.Fatal("unable to sign SetupGame transaction: ", err)
-		return
-	}
+				return nil
+			})
+		if err != nil {
+			log.Fatal("unable to sign SetupGame transaction: ", err)
+			return
+		}
 
-	err = tx.VerifySignatures()
-	if err != nil {
-		log.Fatal("Error at Verifying tx SetupGame signatures: ", err)
-		return
+		err = tx.VerifySignatures()
+		if err != nil {
+			log.Fatal("Error at Verifying tx SetupGame signatures: ", err)
+			return
+		}
+		// Send transaction, and wait for confirmation:
+		sig, err := confirm.SendAndConfirmTransaction(
+			ctx,
+			client,
+			wsClient,
+			tx,
+		)
+		if err != nil {
+			log.Fatal("Failed at sending and confirm SetupGame transaction: ", err)
+			return
+		}
+		log.Println("SetupGame Sig: ", sig)
 	}
-	// Send transaction, and wait for confirmation:
-	sig, err := confirm.SendAndConfirmTransaction(
-		ctx,
-		client,
-		wsClient,
-		tx,
-	)
-	if err != nil {
-		log.Fatal("Failed at sending and confirm SetupGame transaction: ", err)
-		return
-	}
-	log.Println("SetupGame Sig: ", sig)
-	err = play(ctx, client, wsClient, keyPairs)
+	err = play(ctx, client, wsClient, keyPairs, gameState)
 	if err != nil {
 		log.Fatal("Failed at calling play:", err)
 		return
@@ -140,7 +143,8 @@ func loadKeyPairs() (KeyPairs, error) {
 
 }
 
-func play(ctx context.Context, client *rpc.Client, wsClient *ws.Client, keyPairs KeyPairs) error {
+func play(ctx context.Context, client *rpc.Client, wsClient *ws.Client, keyPairs KeyPairs, gameState *tic_tac_toe.Game) error {
+	log.Println("Turn:", gameState.Turn)
 	tile := tic_tac_toe.Tile{Row: 0, Column: 0}
 	tPlay := tic_tac_toe.NewPlayInstruction(
 		tile,

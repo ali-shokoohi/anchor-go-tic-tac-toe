@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/ali-shokoohi/anchor-go-tic-tac-toe/pkg/generated/tic_tac_toe"
+	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	confirm "github.com/gagliardetto/solana-go/rpc/sendAndConfirmTransaction"
@@ -38,6 +39,13 @@ func main() {
 		log.Fatal("Failed at getting key pairs: ", err)
 		return
 	}
+
+	gameState, err := getGameState(ctx, client, keyPairs.GamePrivateKey.PublicKey())
+	if err != nil {
+		log.Fatal("Failed at getting game state:", err)
+		return
+	}
+	log.Println("GameState:", gameState)
 
 	programID, err := solana.PublicKeyFromBase58(ProgramID)
 	if err != nil {
@@ -188,4 +196,29 @@ func play(ctx context.Context, client *rpc.Client, wsClient *ws.Client, keyPairs
 	}
 	log.Println("Play Sig: ", sig)
 	return nil
+}
+
+func getGameState(ctx context.Context, client *rpc.Client, gameAccountPublicKey solana.PublicKey) (*tic_tac_toe.Game, error) {
+	// Fetch the account data corresponding to the game account's public key
+	accountInfo, err := client.GetAccountInfo(ctx, gameAccountPublicKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to fetch game account info")
+	}
+
+	// Check if the account data exists
+	if accountInfo.Value == nil {
+		return nil, errors.New("game account data is nil")
+	}
+
+	// Convert DataBytesOrJSON to a byte slice
+	dataBytes := accountInfo.Value.Data.GetBinary()
+
+	// Define your Game struct
+	var gameState tic_tac_toe.Game
+	err = gameState.UnmarshalWithDecoder(bin.NewBinDecoder(dataBytes))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to decode game state")
+	}
+
+	return &gameState, nil
 }

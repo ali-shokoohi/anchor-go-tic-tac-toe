@@ -205,7 +205,15 @@ func play(ctx context.Context, client *rpc.Client, wsClient *ws.Client, keyPairs
 		return nil
 	}
 	log.Println("Play Sig: ", sig)
-	return nil
+
+	gameState, err = getGameState(ctx, client, keyPairs.GamePrivateKey.PublicKey())
+	if err != nil {
+		log.Fatal("Failed at getting game state:", err)
+		return err
+	}
+	log.Println("GameState:", gameState)
+
+	return play(ctx, client, wsClient, keyPairs, gameState)
 }
 
 func getGameState(ctx context.Context, client *rpc.Client, gameAccountPublicKey solana.PublicKey) (*tic_tac_toe.Game, error) {

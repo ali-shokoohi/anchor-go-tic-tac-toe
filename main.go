@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/ali-shokoohi/anchor-go-tic-tac-toe/pkg/generated/tic_tac_toe"
@@ -145,15 +146,54 @@ func loadKeyPairs() (KeyPairs, error) {
 
 func play(ctx context.Context, client *rpc.Client, wsClient *ws.Client, keyPairs KeyPairs, gameState *tic_tac_toe.Game) error {
 	var player solana.PrivateKey
-	log.Println("Turn:", gameState.Turn)
 	if gameState.Turn%2 == 0 {
 		player = keyPairs.PlayerTwoPrivateKey
 	} else {
 		player = keyPairs.PlayerOnePrivateKey
 	}
-	tile := tic_tac_toe.Tile{Row: 0, Column: 0}
+	log.Println("\nPlayer:\n", player.String(), "\nTurn:", gameState.Turn)
+
+	// Choosing the tile cell
+	var cell uint
+	fmt.Print("Enter a tile cell position: ")
+	_, err := fmt.Scan(&cell)
+	if err != nil {
+		return err
+	}
+
+	if cell > 8 {
+		err = errors.New("The cell is out of box! (0 : 8)")
+		return err
+	}
+
+	// Setting the tile
+	var tile *tic_tac_toe.Tile
+	switch cell {
+	case 0:
+		tile = &tic_tac_toe.Tile{Row: 0, Column: 0}
+	case 1:
+		tile = &tic_tac_toe.Tile{Row: 0, Column: 1}
+	case 2:
+		tile = &tic_tac_toe.Tile{Row: 0, Column: 2}
+	case 3:
+		tile = &tic_tac_toe.Tile{Row: 1, Column: 0}
+	case 4:
+		tile = &tic_tac_toe.Tile{Row: 1, Column: 1}
+	case 5:
+		tile = &tic_tac_toe.Tile{Row: 1, Column: 2}
+	case 6:
+		tile = &tic_tac_toe.Tile{Row: 2, Column: 0}
+	case 7:
+		tile = &tic_tac_toe.Tile{Row: 2, Column: 1}
+	case 8:
+		tile = &tic_tac_toe.Tile{Row: 2, Column: 2}
+	default:
+		err = errors.New("Invalid cell. You should choose 0:8")
+		return err
+	}
+
 	tPlay := tic_tac_toe.NewPlayInstruction(
-		tile,
+		*tile,
 		keyPairs.GamePrivateKey.PublicKey(),
 		player.PublicKey(),
 	)
